@@ -80,7 +80,6 @@
         button.main-btn:active { transform: scale(0.97); }
 
         .results { background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255,255,255,0.08); padding: 20px; border-radius: 24px; margin-top: 20px; display: none; }
-        
         .animate-up { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes slideUp { 0% { opacity: 0; transform: translateY(15px); } 100% { opacity: 1; transform: translateY(0); } }
 
@@ -167,8 +166,8 @@
     <div class="section-title">🧾 Taxas (<span id="txtMkName">Shopee</span>)</div>
     <div class="row">
         <div class="form-group">
-            <label>Comissão (%)</label>
-            <input type="text" inputmode="decimal" id="feeCommission" value="20">
+            <label id="labelCommission">Comissão (Auto na Shopee)</label>
+            <input type="text" inputmode="decimal" id="feeCommission" value="20.0">
         </div>
         <div class="form-group">
             <label id="labelTax">Imposto NF (%)</label>
@@ -177,7 +176,7 @@
     </div>
     <div class="row">
         <div class="form-group">
-            <label id="labelFixed">Taxa Fixa (R$)</label>
+            <label id="labelFixed">Taxa Fixa (Auto na Shopee)</label>
             <input type="text" inputmode="decimal" id="feeFixed" value="7.00">
         </div>
         <div class="form-group">
@@ -232,7 +231,11 @@
         </div>
 
         <div id="meliShippingAlert" class="alert-box">
-            ⚠️ Atenção: A partir de R$ 79, o Mercado Livre exige Frete Grátis. A sua Taxa Fixa foi zerada. Preencha o "Frete Vendedor" acima para não ficar no prejuízo.
+            ⚠️ Atenção: A partir de R$ 79, o Mercado Livre exige Frete Grátis. A sua Taxa Fixa foi zerada. Preencha o "Frete Vendedor" acima.
+        </div>
+        
+        <div id="shopeePixAlert" class="alert-box" style="border-color: rgba(48, 209, 88, 0.4); background: rgba(48, 209, 88, 0.15); color: var(--success);">
+            💸 Bônus: Se o cliente pagar via PIX, a Shopee te dá até 8% de margem extra no bolso (Subsídio Oficial)!
         </div>
         
         <div id="roasBox" class="roas-box status-empty">
@@ -290,8 +293,6 @@
         document.getElementById('controlShopee').style.display = (mk === 'shopee') ? 'flex' : 'none';
         document.getElementById('controlMeli').style.display = (mk === 'meli') ? 'flex' : 'none';
         
-        document.getElementById('labelFixed').innerText = (mk === 'meli') ? "Taxa Fixa (Auto no MeLi)" : "Taxa Fixa (R$)";
-        
         updateFees();
     }
 
@@ -321,26 +322,24 @@
         const inputFixed = document.getElementById('feeFixed');
         
         if(currentMk === 'shopee') {
-            inputComm.value = 20;
+            document.getElementById('labelCommission').innerText = "Comissão (Auto na Shopee)";
+            document.getElementById('labelFixed').innerText = "Taxa Fixa (Auto na Shopee)";
+            inputComm.value = "20.0";
             inputFixed.value = shopeeRegime === 'cpf' ? "7.00" : "4.00";
         } else if (currentMk === 'tiktok') {
-            inputComm.value = 8;
+            document.getElementById('labelCommission').innerText = "Comissão (%)";
+            document.getElementById('labelFixed').innerText = "Taxa Fixa (R$)";
+            inputComm.value = "8.0";
             inputFixed.value = "3.00";
         } else if (currentMk === 'meli') {
-            inputComm.value = meliAd === 'classic' ? 14 : 19;
+            document.getElementById('labelCommission').innerText = "Comissão (%)";
+            document.getElementById('labelFixed').innerText = "Taxa Fixa (Auto no MeLi)";
+            inputComm.value = meliAd === 'classic' ? "14.0" : "19.0";
             inputFixed.value = "6.25"; 
         }
         
         if (document.getElementById('resultsArea').style.display === 'block') calculate();
     }
-
-    document.getElementById('pricingMode').addEventListener('change', function() {
-        const mode = this.value;
-        const label = document.getElementById('targetLabel');
-        if(mode === 'margin') label.innerText = 'Margem Desejada (%)';
-        if(mode === 'price') label.innerText = 'Preço Final (R$)';
-        if(mode === 'profit') label.innerText = 'Lucro Desejado (R$)';
-    });
 
     function solvePrice(baseFixedCosts, assumedFixedFee, assumedExtraVarPercent, variableFeesPercentage, mode, targetValue) {
         let p = 0;
@@ -366,9 +365,7 @@
         const costProduct = unitCost * qty;
         
         const costPackaging = getNum('costPackaging');
-        const feeCommission = getNum('feeCommission') / 100;
         const feeTax = getNum('feeTax') / 100;
-        let feeFixedInput = getNum('feeFixed');
         const feeShipping = getNum('feeShipping');
         const promoDiscount = getNum('promoDiscount') / 100;
         
@@ -377,12 +374,54 @@
         const inputRoas = getNum('inputRoas');
 
         const baseFixedCosts = costProduct + costPackaging + feeShipping; 
-        const variableFeesPercentage = feeCommission + feeTax;
 
         let basePrice = 0, finalPrice = 0, netProfit = 0, profitMargin = 0;
-        let appliedFixedFee = feeFixedInput;
+        let appliedFixedFee = getNum('feeFixed');
+        let appliedCommission = getNum('feeCommission') / 100;
 
-        if (currentMk === 'meli') {
+        // Motor Inteligente Shopee (Regras de Março/2026)
+        if (currentMk === 'shopee') {
+            if (mode === 'price') {
+                finalPrice = targetValue * (1 - promoDiscount);
+                if (finalPrice < 80.00) { appliedCommission = 0.20; appliedFixedFee = shopeeRegime === 'cpf' ? 7.00 : 4.00; }
+                else if (finalPrice < 100.00) { appliedCommission = 0.14; appliedFixedFee = 16.00; }
+                else if (finalPrice < 200.00) { appliedCommission = 0.14; appliedFixedFee = 20.00; }
+                else if (finalPrice < 500.00) { appliedCommission = 0.14; appliedFixedFee = 26.00; }
+                else { appliedCommission = 0.14; appliedFixedFee = 28.00; }
+            } else {
+                let baseFixedFeeT1 = shopeeRegime === 'cpf' ? 7.00 : 4.00;
+                let t1 = solvePrice(baseFixedCosts, baseFixedFeeT1, 0, feeTax + 0.20, mode, targetValue);
+                let t2 = solvePrice(baseFixedCosts, 16.00, 0, feeTax + 0.14, mode, targetValue);
+                let t3 = solvePrice(baseFixedCosts, 20.00, 0, feeTax + 0.14, mode, targetValue);
+                let t4 = solvePrice(baseFixedCosts, 26.00, 0, feeTax + 0.14, mode, targetValue);
+                let t5 = solvePrice(baseFixedCosts, 28.00, 0, feeTax + 0.14, mode, targetValue);
+
+                if (t1 > 0 && t1 < 80.00) { finalPrice = t1; appliedCommission = 0.20; appliedFixedFee = baseFixedFeeT1; }
+                else if (t2 >= 80.00 && t2 < 100.00) { finalPrice = t2; appliedCommission = 0.14; appliedFixedFee = 16.00; }
+                else if (t3 >= 100.00 && t3 < 200.00) { finalPrice = t3; appliedCommission = 0.14; appliedFixedFee = 20.00; }
+                else if (t4 >= 200.00 && t4 < 500.00) { finalPrice = t4; appliedCommission = 0.14; appliedFixedFee = 26.00; }
+                else if (t5 >= 500.00) { finalPrice = t5; appliedCommission = 0.14; appliedFixedFee = 28.00; }
+                else {
+                    if (t1 >= 80 && t2 < 80) { finalPrice = 80; appliedCommission = 0.14; appliedFixedFee = 16.00; }
+                    else if (t2 >= 100 && t3 < 100) { finalPrice = 100; appliedCommission = 0.14; appliedFixedFee = 20.00; }
+                    else if (t3 >= 200 && t4 < 200) { finalPrice = 200; appliedCommission = 0.14; appliedFixedFee = 26.00; }
+                    else if (t4 >= 500 && t5 < 500) { finalPrice = 500; appliedCommission = 0.14; appliedFixedFee = 28.00; }
+                    else { finalPrice = t1 > 0 ? t1 : t2; appliedCommission = 0.20; appliedFixedFee = baseFixedFeeT1; }
+                }
+            }
+            
+            document.getElementById('feeFixed').value = appliedFixedFee.toFixed(2);
+            document.getElementById('feeCommission').value = (appliedCommission * 100).toFixed(1);
+            document.getElementById('feeFixed').style.background = 'rgba(238, 77, 45, 0.2)';
+            document.getElementById('feeCommission').style.background = 'rgba(238, 77, 45, 0.2)';
+            setTimeout(() => {
+                document.getElementById('feeFixed').style.background = 'var(--input-bg)';
+                document.getElementById('feeCommission').style.background = 'var(--input-bg)';
+            }, 800);
+
+        // Motor Inteligente MeLi
+        } else if (currentMk === 'meli') {
+            let variableFeesPercentage = appliedCommission + feeTax;
             if (mode === 'price') {
                 finalPrice = targetValue * (1 - promoDiscount);
                 if (finalPrice < 12.50) appliedFixedFee = finalPrice * 0.50;
@@ -412,24 +451,34 @@
             document.getElementById('feeFixed').style.background = 'rgba(241, 196, 15, 0.2)';
             setTimeout(() => document.getElementById('feeFixed').style.background = 'var(--input-bg)', 800);
 
+        // Padrão TikTok
         } else {
-            finalPrice = solvePrice(baseFixedCosts, feeFixedInput, 0, variableFeesPercentage, mode, targetValue);
+            finalPrice = solvePrice(baseFixedCosts, appliedFixedFee, 0, appliedCommission + feeTax, mode, targetValue);
         }
 
         if (!isFinite(finalPrice) || finalPrice < 0) finalPrice = 0;
 
         basePrice = promoDiscount > 0 ? finalPrice / (1 - promoDiscount) : finalPrice;
-        netProfit = finalPrice - baseFixedCosts - appliedFixedFee - (finalPrice * variableFeesPercentage);
+        netProfit = finalPrice - baseFixedCosts - appliedFixedFee - (finalPrice * (appliedCommission + feeTax));
         profitMargin = finalPrice > 0 ? (netProfit / finalPrice) : 0;
 
+        // Alerta Mercado Livre
         const meliAlert = document.getElementById('meliShippingAlert');
         const labelShip = document.getElementById('labelShipping');
         if (currentMk === 'meli' && finalPrice >= 79.00 && feeShipping === 0) {
-            meliAlert.style.display = 'block';
-            labelShip.style.color = 'var(--warning)';
+            meliAlert.style.display = 'block'; labelShip.style.color = 'var(--warning)';
         } else {
-            meliAlert.style.display = 'none';
-            labelShip.style.color = 'var(--text-muted)';
+            meliAlert.style.display = 'none'; labelShip.style.color = 'var(--text-muted)';
+        }
+
+        // Alerta Shopee Pix Subsídio
+        const shopeeAlert = document.getElementById('shopeePixAlert');
+        if (currentMk === 'shopee' && finalPrice >= 80.00) {
+            shopeeAlert.style.display = 'block';
+            let extraMargin = finalPrice >= 500 ? '8%' : '5%';
+            shopeeAlert.innerText = `💸 Bônus: Se o cliente pagar via PIX, a Shopee te dá ${extraMargin} de margem extra no bolso (Subsídio Oficial)!`;
+        } else {
+            shopeeAlert.style.display = 'none';
         }
 
         const roasBox = document.getElementById('roasBox');
@@ -464,7 +513,7 @@
 
         globalResults = {
             mk: document.getElementById('txtMkName').innerText,
-            qty, costProduct, promoDiscount, basePrice, finalPrice, netProfit, marginBase: profitMargin * 100, roasUser: inputRoas, marginReal: finalProfitMargin * 100, statusText, appliedFixedFee
+            qty, costProduct, promoDiscount, basePrice, finalPrice, netProfit, marginBase: profitMargin * 100, roasUser: inputRoas, marginReal: finalProfitMargin * 100, statusText, appliedFixedFee, appliedCommission
         };
 
         document.getElementById('resSalePrice').innerText = finalPrice.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
@@ -488,7 +537,7 @@
             txt += `💰 *Preço de Venda:* ${brl(globalResults.finalPrice)}\n\n`;
         }
         
-        txt += `📊 *Resultados:*\n- Taxa Fixa Cobrada: ${brl(globalResults.appliedFixedFee)}\n- Lucro (Sem Ads): ${brl(globalResults.netProfit)} (${globalResults.marginBase.toFixed(2)}%)\n`;
+        txt += `📊 *Resultados:*\n- Comissão Cobrada: ${(globalResults.appliedCommission * 100).toFixed(1)}%\n- Taxa Fixa Cobrada: ${brl(globalResults.appliedFixedFee)}\n- Lucro (Sem Ads): ${brl(globalResults.netProfit)} (${globalResults.marginBase.toFixed(2)}%)\n`;
         
         if (globalResults.roasUser > 0) {
             txt += `\n🎯 *Diagnóstico Ads:*\n- ROAS: ${globalResults.roasUser}\n- Lucro Livre Final: ${globalResults.marginReal.toFixed(2)}% (${globalResults.statusText})`;
